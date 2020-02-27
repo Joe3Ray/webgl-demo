@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script src="matrix.js"></script>
+  <script>
+    // 顶点着色器代码
+    const vertexShaderSource = `
+      // 编写 glsl 代码
+      // 设置浮点数精度
+      precision mediump float;
+      // 接受 js 传过来的坐标
+      attribute vec3 a_Position;
+      // 接收 js 传过来的颜色
+      attribute vec4 a_Color;
+      // 透传给片元着色器
+      varying vec4 v_Color;
+      // 转换矩阵
+      uniform mat4 u_Matrix;
+      void main() {
+        gl_Position = u_Matrix * vec4(a_Position, 1);
+        v_Color = a_Color;
+      }
+    `;
+    // 片元着色器代码
+    const fragmentShaderSource = `
+      // 编写 glsl 代码
+      // 设置浮点数精度
+      precision mediump float;
+      // 接收顶点着色器传来的颜色信息
+      varying vec4 v_Color;
+      void main() {
+        gl_FragColor = v_Color;
+      }
+    `;
+    
+    // 根据源代码创建着色器对象
+    function createShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      return shader;
+    }
+    
+    // 获取 canvas 并设置尺寸
+    const canvas = document.querySelector('#canvas');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    // 获取 webgl 上下文
+    const gl = canvas.getContext('webgl');
+    
+    // 创建顶点着色器对象
+    const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+    // 创建片元着色器对象
+    const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+    // 创建 webgl 程序对象
+    const program = gl.createProgram();
+    // 绑定顶点着色器
+    gl.attachShader(program, vertexShader);
+    // 绑定片元着色器
+    gl.attachShader(program, fragmentShader);
+    // 链接程序
+    gl.linkProgram(program);
+    // 使用程序
+    gl.useProgram(program);
+
+    /**
+     * 创建一个立方体，返回 points，indices，colors
+     * 
+     * @params width 宽度
+     * @params height 高度
+     * @params depth 深度
+     */
+    function createCube(width, height, depth) {
+        const baseX = width / 2;
+        const baseY = height / 2;
+        const baseZ = depth / 2;
+
+        /*
+              7 ---------- 6
+             /|          / |
+            / |         /  | 
+          3 --|-------- 2  |
+          |   4 --------|- 5
+          |  /          |  /
+          | /           | / 
+          |/            |/ 
+          0 ----------- 1
+        */
+        const facePoints = [
+            [-baseX, -baseY, baseZ], // 顶点0
+            [baseX, -baseY, baseZ], // 顶点1
+            [baseX, baseY, baseZ], // 顶点2
+            [-baseX, baseY, baseZ], // 顶点3
+            [-baseX, -baseY, -baseZ], // 顶点4
+            [baseX, -baseY, -baseZ], // 顶点5
+            [baseX, baseY, -baseZ], // 顶点6
+            [-baseX, baseY, -baseZ], // 顶点7
+        ];
+        const faceColors = [
+          [255, 0, 0, 1], // 前面
+          [0, 255, 0, 1], // 后面
+          [0, 0, 255, 1], // 左面
+          [255, 255, 0, 1], // 右面
+          [0, 255, 255, 1], // 上面
+          [255, 0, 255, 1] // 下面
+        ];
+        const faceIndices = [
+            [0, 1, 2, 3], // 前面
+            [4, 5, 6, 7], // 后面
+            [0, 3, 7, 4], // 左面
+            [1, 5, 6, 2], // 右面
+            [3, 2, 6, 7], // 上面
+            [0, 1, 5, 4], // 下面
+        ];
+
+        let points = [];
+        let colors = [];
+        let indices = [];
+
+        for (let i = 0; i < 6; i++) {
+            const currentFaceIndices = faceIndices[i];
+            const currentFaceColor = faceColors[i];
+            for (let j = 0; j < 4; j++) {
+                const pointIndice = currentFaceIndices[j];
+                points = points.concat(facePoints[pointIndice]);
+                colors = colors.concat(currentFaceColor);
+            }
+            const offset = 4 * i;
+            indices.push(offset, offset + 1, offset + 2);
+            indices.push(offset, offset + 2, offset + 3);
+            // indices.push(offset + 2, offset + 1, offset);
+            // indices.push(offset + 3, offset + 2, offset);
+        }
+
+        return {
+            points,
+            colors,
+            indices
+        };
+    }
+
+    const { points, colors, indices } = createCube(1, 1, 1);
+
+    // 创建存储坐标信息的buffer
+    const pointsBuffer = gl.createBuffer();
+    // 绑定pointsBuffer为当前缓冲区
+    gl.bindBuffer(gl.ARRAY_BUFFER, pointsBuffer);
+    // 获取程序中的 a_Position 变量
+    const a_Position = gl.getAttribLocation(program, 'a_Position');
+    // 激活 a_Position
+    gl.enableVertexAttribArray(a_Position);
+    // 指定 a_Position 从 buffer 获取数据的方式
+    gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, 0, 0);
+    // 给 buffer 灌数据
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points), gl.STATIC_DRAW);
+
+    // 创建存储颜色信息的buffer
+    const colorsBuffer = gl.createBuffer();
+    // 绑定colorsBuffer为当前缓冲区
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorsBuffer);
+    // 获取程序中的 a_Position 变量
+    const a_Color = gl.getAttribLocation(program, 'a_Color');
+    // 激活 a_Position
+    gl.enableVertexAttribArray(a_Color);
+    // 指定 a_Position 从 buffer 获取数据的方式
+    gl.vertexAttribPointer(a_Color, 4, gl.UNSIGNED_BYTE, false, 0, 0);
+    // 给 buffer 灌数据
+    gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(colors), gl.STATIC_DRAW);
+
+    // 创建索引 buffer
+    const indicesBuffer = gl.createBuffer();
+    // 绑定索引 buffer
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indicesBuffer);
+    // 灌数据
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+    // 增加如下计算矩阵代码
+    const aspect = canvas.width / canvas.height;
+    const projectionMatrix = matrix.ortho(-aspect * 4, aspect * 4, -4, 4, 100, -100);
+    const dstMatrix = matrix.identity();
+    const tmpMatrix = matrix.identity();
+    let xAngle = 0;
+    let yAngle = 0;
+  
+    function deg2radians(deg) {
+	  return Math.PI / 180 * deg;
+	}
+  
+    gl.clearColor(1, 1, 1, 1);
+    // 开启背面剔除
+    // gl.enable(gl.CULL_FACE);
+    const u_Matrix = gl.getUniformLocation(program, 'u_Matrix');
+  
+    function render() {
+      xAngle += 1;
+      yAngle += 1;
+      // 先绕 Y 轴旋转矩阵
+      matrix.rotationY(deg2radians(yAngle), dstMatrix);
+      // 再绕 X 轴旋转
+      matrix.multiply(dstMatrix, matrix.rotationX(deg2radians(xAngle), tmpMatrix), dstMatrix);
+      // 模型投影矩阵
+      matrix.multiply(projectionMatrix, dstMatrix, dstMatrix);
+      // 给 GPU 传递矩阵
+      gl.uniformMatrix4fv(u_Matrix, false, dstMatrix);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+      // 让立方体动起来
+      requestAnimationFrame(render);
+    }
+    
+    render();
+  </script>
+</body>
+</html>
